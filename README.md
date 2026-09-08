@@ -1,6 +1,6 @@
 # pi-openai-fast-mode
 
-Pi package that adds a Fast Mode toggle for GPT-5.6, GPT-5.5, and GPT-5.4.
+Pi package that adds a Fast Mode toggle for GPT-6-Astra, GPT-5.6, GPT-5.5, and GPT-5.4.
 
 <img style="width: 100%; height: auto;" alt="fast mode" src="https://raw.githubusercontent.com/johncmunson/pi-openai-fast-mode/refs/heads/main/preview-img.png" />
 
@@ -8,7 +8,7 @@ Pi package that adds a Fast Mode toggle for GPT-5.6, GPT-5.5, and GPT-5.4.
 
 - Registers `/fast [on|off|toggle]`.
 - Registers `--fast` to enable Fast Mode at startup.
-- Injects `service_tier: "priority"` into matching OpenAI/OpenAI-Codex provider payloads.
+- Injects `service_tier: "fast"` into matching OpenAI/OpenAI-Codex provider payloads.
 - Shows a compact right-aligned TUI `fast` indicator only when enabled and the current model is configured.
 - Persists state in user or project scope depending on how the package is loaded.
 
@@ -51,45 +51,53 @@ Fast Mode starts disabled and only applies to exact configured provider/model pa
 {
   "enabled": false,
   "targets": [
-    { "provider": "openai", "model": "gpt-5.4", "serviceTier": "priority" },
-    { "provider": "openai", "model": "gpt-5.5", "serviceTier": "priority" },
-    { "provider": "openai", "model": "gpt-5.6", "serviceTier": "priority" },
-    { "provider": "openai", "model": "gpt-5.6-sol", "serviceTier": "priority" },
-    { "provider": "openai", "model": "gpt-5.6-terra", "serviceTier": "priority" },
-    { "provider": "openai", "model": "gpt-5.6-luna", "serviceTier": "priority" },
+    { "provider": "openai", "model": "gpt-5.4", "serviceTier": "fast" },
+    { "provider": "openai", "model": "gpt-5.5", "serviceTier": "fast" },
+    { "provider": "openai", "model": "gpt-5.6", "serviceTier": "fast" },
+    { "provider": "openai", "model": "gpt-5.6-sol", "serviceTier": "fast" },
+    { "provider": "openai", "model": "gpt-5.6-terra", "serviceTier": "fast" },
+    { "provider": "openai", "model": "gpt-5.6-luna", "serviceTier": "fast" },
+    { "provider": "openai", "model": "gpt-6-astra", "serviceTier": "fast" },
     {
       "provider": "openai-codex",
       "model": "gpt-5.4",
-      "serviceTier": "priority"
+      "serviceTier": "fast"
     },
     {
       "provider": "openai-codex",
       "model": "gpt-5.5",
-      "serviceTier": "priority"
+      "serviceTier": "fast"
     },
     {
       "provider": "openai-codex",
       "model": "gpt-5.6",
-      "serviceTier": "priority"
+      "serviceTier": "fast"
     },
     {
       "provider": "openai-codex",
       "model": "gpt-5.6-sol",
-      "serviceTier": "priority"
+      "serviceTier": "fast"
     },
     {
       "provider": "openai-codex",
       "model": "gpt-5.6-terra",
-      "serviceTier": "priority"
+      "serviceTier": "fast"
     },
     {
       "provider": "openai-codex",
       "model": "gpt-5.6-luna",
-      "serviceTier": "priority"
+      "serviceTier": "fast"
+    },
+    {
+      "provider": "openai-codex",
+      "model": "gpt-6-astra",
+      "serviceTier": "fast"
     }
   ]
 }
 ```
+
+On startup, saved targets are refreshed to the current defaults, including `serviceTier: "fast"`, while preserving the enabled state.
 
 User-scoped state is stored under `~/.pi/agent/extensions/pi-openai-fast-mode/config.json`.
 Project-scoped state is stored under `./.pi/pi-openai-fast-mode/config.json`.

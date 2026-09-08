@@ -73,7 +73,54 @@ describe("model matching", () => {
   });
 });
 
+describe.each(["openai", "openai-codex"])("GPT-6-Astra on %s", (provider) => {
+  const model = { provider, id: "gpt-6-astra" };
+  const defaults = cloneConfig();
+  const enabledConfig = { ...defaults, enabled: true };
+
+  it("matches the default target, injects fast, and shows fast when enabled", () => {
+    expect(findMatchingTarget(model, defaults.targets)).toEqual({
+      provider,
+      model: "gpt-6-astra",
+      serviceTier: "fast",
+    });
+    const payload = { model: model.id, messages: [], service_tier: "auto" };
+    expect(getFastModePayload(enabledConfig, model, payload)).toEqual({
+      ...payload,
+      service_tier: "fast",
+    });
+    expect(payload.service_tier).toBe("auto");
+    expect(getStatusText(enabledConfig, model)).toBe("fast");
+  });
+
+  it("does not change payloads or show fast when disabled", () => {
+    expect(getFastModePayload(defaults, model, {})).toBeUndefined();
+    expect(getStatusText(defaults, model)).toBeUndefined();
+  });
+
+  it("does not match unconfigured model variants", () => {
+    const variant = { provider, id: "gpt-6-astra-preview" };
+    expect(findMatchingTarget(variant, defaults.targets)).toBeUndefined();
+    expect(getFastModePayload(enabledConfig, variant, {})).toBeUndefined();
+    expect(getStatusText(enabledConfig, variant)).toBeUndefined();
+  });
+});
+
 describe("payload mutation", () => {
+  it("defaults missing or empty service tiers to fast", () => {
+    expect(applyFastModePayload({ a: 1 }, "")).toEqual({
+      a: 1,
+      service_tier: "fast",
+    });
+    expect(
+      getFastModePayload(
+        { enabled: true, targets: [{ provider: "openai", model: "gpt-6-astra" }] },
+        { provider: "openai", id: "gpt-6-astra" },
+        { a: 1 },
+      ),
+    ).toEqual({ a: 1, service_tier: "fast" });
+  });
+
   it("applyFastModePayload injects service_tier while preserving existing fields", () => {
     const payload = { model: "gpt-5.4", messages: [], service_tier: "auto" };
     const mutated = applyFastModePayload(payload, "priority");
