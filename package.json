@@ -1,6 +1,6 @@
 {
   "name": "pi-openai-fast-mode",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Pi extension package for toggling OpenAI Fast Mode inference",
   "license": "MIT",
   "type": "module",
