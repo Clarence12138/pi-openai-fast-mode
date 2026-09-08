@@ -36,35 +36,35 @@ describe("DEFAULT_CONFIG", () => {
     expect(DEFAULT_CONFIG).toEqual({
       enabled: false,
       targets: [
-        { provider: "openai", model: "gpt-5.4", serviceTier: "fast" },
-        { provider: "openai", model: "gpt-5.5", serviceTier: "fast" },
-        { provider: "openai", model: "gpt-5.6", serviceTier: "fast" },
-        { provider: "openai", model: "gpt-5.6-sol", serviceTier: "fast" },
-        { provider: "openai", model: "gpt-5.6-terra", serviceTier: "fast" },
-        { provider: "openai", model: "gpt-5.6-luna", serviceTier: "fast" },
-        { provider: "openai", model: "gpt-6-astra", serviceTier: "fast" },
-        { provider: "openai-codex", model: "gpt-5.4", serviceTier: "fast" },
-        { provider: "openai-codex", model: "gpt-5.5", serviceTier: "fast" },
-        { provider: "openai-codex", model: "gpt-5.6", serviceTier: "fast" },
+        { provider: "openai", model: "gpt-5.4", serviceTier: "priority" },
+        { provider: "openai", model: "gpt-5.5", serviceTier: "priority" },
+        { provider: "openai", model: "gpt-5.6", serviceTier: "priority" },
+        { provider: "openai", model: "gpt-5.6-sol", serviceTier: "priority" },
+        { provider: "openai", model: "gpt-5.6-terra", serviceTier: "priority" },
+        { provider: "openai", model: "gpt-5.6-luna", serviceTier: "priority" },
+        { provider: "openai", model: "gpt-6-astra", serviceTier: "priority" },
+        { provider: "openai-codex", model: "gpt-5.4", serviceTier: "priority" },
+        { provider: "openai-codex", model: "gpt-5.5", serviceTier: "priority" },
+        { provider: "openai-codex", model: "gpt-5.6", serviceTier: "priority" },
         {
           provider: "openai-codex",
           model: "gpt-5.6-sol",
-          serviceTier: "fast",
+          serviceTier: "priority",
         },
         {
           provider: "openai-codex",
           model: "gpt-5.6-terra",
-          serviceTier: "fast",
+          serviceTier: "priority",
         },
         {
           provider: "openai-codex",
           model: "gpt-5.6-luna",
-          serviceTier: "fast",
+          serviceTier: "priority",
         },
         {
           provider: "openai-codex",
           model: "gpt-6-astra",
-          serviceTier: "fast",
+          serviceTier: "priority",
         },
       ],
     });
@@ -110,7 +110,7 @@ describe("normalizeTargets", () => {
         null,
       ]),
     ).toEqual([
-      { provider: "openai", model: "gpt-5.4", serviceTier: "fast" },
+      { provider: "openai", model: "gpt-5.4", serviceTier: "priority" },
       { provider: "openai-codex", model: "gpt-5.5", serviceTier: "priority" },
     ]);
   });
@@ -149,7 +149,7 @@ describe("normalizeConfig", () => {
     expect(normalizeConfig({}, fallback)).toEqual(fallback);
   });
 
-  it("defaults missing serviceTier to fast", () => {
+  it("defaults missing serviceTier to priority", () => {
     expect(
       normalizeConfig({
         enabled: true,
@@ -158,7 +158,7 @@ describe("normalizeConfig", () => {
     ).toEqual({
       enabled: true,
       targets: [
-        { provider: "openai", model: "gpt-5.4", serviceTier: "fast" },
+        { provider: "openai", model: "gpt-5.4", serviceTier: "priority" },
       ],
     });
   });
@@ -194,7 +194,7 @@ describe("config JSON IO", () => {
     expect(JSON.parse(await readFile(configPath, "utf8"))).toEqual({
       enabled: true,
       targets: [
-        { provider: "openai", model: "gpt-5.4", serviceTier: "fast" },
+        { provider: "openai", model: "gpt-5.4", serviceTier: "priority" },
       ],
     });
   });

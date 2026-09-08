@@ -140,7 +140,7 @@ describe("piFastModeExtension registration", () => {
 });
 
 describe("piFastModeExtension runtime behavior", () => {
-  it("refreshes persisted priority targets to fast on startup without changing enabled", async () => {
+  it("refreshes persisted fast targets to priority on startup without changing enabled", async () => {
     const root = await makeTempDir();
     const cwd = join(root, "project");
     const agentDir = join(root, "agent");
@@ -154,7 +154,7 @@ describe("piFastModeExtension runtime behavior", () => {
       JSON.stringify({
         enabled: true,
         targets: [
-          { provider: "openai", model: "gpt-5.4", serviceTier: "priority" },
+          { provider: "openai", model: "gpt-5.4", serviceTier: "fast" },
         ],
       }),
       "utf8",
@@ -185,7 +185,7 @@ describe("piFastModeExtension runtime behavior", () => {
         { type: "before_provider_request", payload: { model: "gpt-5.4" } },
         ctx,
       ),
-    ).toEqual({ model: "gpt-5.4", service_tier: "fast" });
+    ).toEqual({ model: "gpt-5.4", service_tier: "priority" });
   });
 
   it("--fast enables, persists, shows status, and mutates matching payloads", async () => {
@@ -228,7 +228,7 @@ describe("piFastModeExtension runtime behavior", () => {
     expect(mutated).toEqual({
       model: "gpt-5.4",
       messages: [],
-      service_tier: "fast",
+      service_tier: "priority",
     });
   });
 

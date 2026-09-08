@@ -78,16 +78,16 @@ describe.each(["openai", "openai-codex"])("GPT-6-Astra on %s", (provider) => {
   const defaults = cloneConfig();
   const enabledConfig = { ...defaults, enabled: true };
 
-  it("matches the default target, injects fast, and shows fast when enabled", () => {
+  it("matches the default target, injects priority, and shows fast when enabled", () => {
     expect(findMatchingTarget(model, defaults.targets)).toEqual({
       provider,
       model: "gpt-6-astra",
-      serviceTier: "fast",
+      serviceTier: "priority",
     });
     const payload = { model: model.id, messages: [], service_tier: "auto" };
     expect(getFastModePayload(enabledConfig, model, payload)).toEqual({
       ...payload,
-      service_tier: "fast",
+      service_tier: "priority",
     });
     expect(payload.service_tier).toBe("auto");
     expect(getStatusText(enabledConfig, model)).toBe("fast");
@@ -107,10 +107,10 @@ describe.each(["openai", "openai-codex"])("GPT-6-Astra on %s", (provider) => {
 });
 
 describe("payload mutation", () => {
-  it("defaults missing or empty service tiers to fast", () => {
+  it("defaults missing or empty service tiers to priority", () => {
     expect(applyFastModePayload({ a: 1 }, "")).toEqual({
       a: 1,
-      service_tier: "fast",
+      service_tier: "priority",
     });
     expect(
       getFastModePayload(
@@ -118,7 +118,7 @@ describe("payload mutation", () => {
         { provider: "openai", id: "gpt-6-astra" },
         { a: 1 },
       ),
-    ).toEqual({ a: 1, service_tier: "fast" });
+    ).toEqual({ a: 1, service_tier: "priority" });
   });
 
   it("applyFastModePayload injects service_tier while preserving existing fields", () => {
