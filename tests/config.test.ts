@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
@@ -221,6 +221,51 @@ describe("config JSON IO", () => {
         { provider: "cpr", model: "gpt-6-astra", serviceTier: "priority" },
       ],
     });
+  });
+
+  it("replaces the config in place without leaving temp files behind", async () => {
+    const dir = await makeTempDir();
+    const configPath = join(dir, "nested", "config.json");
+
+    await saveConfigToPath(configPath, { enabled: false, targets: [] });
+    await saveConfigToPath(configPath, { enabled: true, targets: [] });
+
+    expect(await readdir(join(dir, "nested"))).toEqual(["config.json"]);
+    expect(JSON.parse(await readFile(configPath, "utf8"))).toEqual({
+      enabled: true,
+      targets: [],
+    });
+  });
+
+  it("never exposes a partial file to concurrent readers", async () => {
+    const dir = await makeTempDir();
+    const configPath = join(dir, "config.json");
+    const expected = { enabled: true, targets: DEFAULT_CONFIG.targets };
+
+    await saveConfigToPath(configPath, expected);
+
+    let malformed = 0;
+    let mismatched = 0;
+    const reader = async () => {
+      for (let i = 0; i < 30; i++) {
+        try {
+          const parsed = JSON.parse(await readFile(configPath, "utf8"));
+          if (JSON.stringify(parsed) !== JSON.stringify(expected)) mismatched++;
+        } catch {
+          malformed++;
+        }
+      }
+    };
+    const writer = async () => {
+      for (let i = 0; i < 10; i++) await saveConfigToPath(configPath, expected);
+    };
+
+    await Promise.all([
+      ...Array.from({ length: 20 }, reader),
+      ...Array.from({ length: 20 }, writer),
+    ]);
+
+    expect({ malformed, mismatched }).toEqual({ malformed: 0, mismatched: 0 });
   });
 });
 

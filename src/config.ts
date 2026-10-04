@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
 import { existsSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { dirname, join, resolve, sep } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import {
@@ -285,11 +286,23 @@ export async function saveConfigToPath(
 ): Promise<void> {
   const normalized = normalizeConfig(config);
   await fs.mkdir(dirname(configPath), { recursive: true });
-  await fs.writeFile(
-    configPath,
-    `${JSON.stringify(normalized, null, 2)}\n`,
-    "utf8",
-  );
+
+  // Write a sibling file and rename it into place: fs.writeFile truncates
+  // first, so an in-place write lets a concurrent reader (or a crash) observe
+  // an empty or half-written config. Both paths stay in one directory so the
+  // rename is atomic.
+  const tempPath = `${configPath}.${randomUUID()}.tmp`;
+  try {
+    await fs.writeFile(
+      tempPath,
+      `${JSON.stringify(normalized, null, 2)}\n`,
+      "utf8",
+    );
+    await fs.rename(tempPath, configPath);
+  } catch (error) {
+    await fs.rm(tempPath, { force: true });
+    throw error;
+  }
 }
 
 export async function saveConfigForScope(
