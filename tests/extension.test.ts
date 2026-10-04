@@ -140,7 +140,7 @@ describe("piFastModeExtension registration", () => {
 });
 
 describe("piFastModeExtension runtime behavior", () => {
-  it("refreshes persisted fast targets to priority on startup without changing enabled", async () => {
+  it("keeps persisted custom targets and adds missing defaults on startup without changing enabled", async () => {
     const root = await makeTempDir();
     const cwd = join(root, "project");
     const agentDir = join(root, "agent");
@@ -154,6 +154,7 @@ describe("piFastModeExtension runtime behavior", () => {
       JSON.stringify({
         enabled: true,
         targets: [
+          { provider: "cpr", model: "gpt-6-astra", serviceTier: "priority" },
           { provider: "openai", model: "gpt-5.4", serviceTier: "fast" },
         ],
       }),
@@ -166,7 +167,7 @@ describe("piFastModeExtension runtime behavior", () => {
       agentDir,
     })(pi as any);
 
-    const ctx = makeCtx(cwd, { provider: "openai", id: "gpt-5.4" });
+    const ctx = makeCtx(cwd, { provider: "cpr", id: "gpt-6-astra" });
     await runHandler(
       handlers,
       "session_start",
@@ -174,18 +175,29 @@ describe("piFastModeExtension runtime behavior", () => {
       ctx,
     );
 
-    expect(JSON.parse(await readFile(configPath, "utf8"))).toEqual({
-      enabled: true,
-      targets: DEFAULT_CONFIG.targets,
+    const persisted = JSON.parse(await readFile(configPath, "utf8"));
+    expect(persisted.enabled).toBe(true);
+    expect(persisted.targets[0]).toEqual({
+      provider: "cpr",
+      model: "gpt-6-astra",
+      serviceTier: "priority",
     });
+    // 用户自己声明的 serviceTier 不被默认值覆盖
+    expect(persisted.targets).toContainEqual({
+      provider: "openai",
+      model: "gpt-5.4",
+      serviceTier: "fast",
+    });
+    expect(persisted.targets).toHaveLength(DEFAULT_CONFIG.targets.length + 1);
+
     expect(
       await runHandler(
         handlers,
         "before_provider_request",
-        { type: "before_provider_request", payload: { model: "gpt-5.4" } },
+        { type: "before_provider_request", payload: { model: "gpt-6-astra" } },
         ctx,
       ),
-    ).toEqual({ model: "gpt-5.4", service_tier: "priority" });
+    ).toEqual({ model: "gpt-6-astra", service_tier: "priority" });
   });
 
   it("--fast enables, persists, shows status, and mutates matching payloads", async () => {

@@ -4,7 +4,6 @@ import { dirname, join, resolve, sep } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import {
   DEFAULT_SERVICE_TIER,
-  SUPPORTED_PROVIDERS,
   type FastModeConfig,
   type FastTarget,
   type ResolvedConfigPath,
@@ -74,8 +73,6 @@ export const DEFAULT_CONFIG: FastModeConfig = {
   ],
 };
 
-const SUPPORTED_PROVIDER_SET = new Set<string>(SUPPORTED_PROVIDERS);
-
 type RecordLike = Record<string, unknown>;
 
 function isRecord(value: unknown): value is RecordLike {
@@ -99,12 +96,25 @@ export function cloneConfig(
   };
 }
 
-/** Keep the persisted toggle while replacing targets with this package's current list. */
-export function syncSupportedTargets(config: FastModeConfig): FastModeConfig {
-  return {
-    enabled: config.enabled,
-    targets: DEFAULT_CONFIG.targets.map(cloneTarget),
-  };
+/**
+ * Keep the persisted toggle and every user target, then add any default the
+ * config does not have yet. Upgrades therefore ship new models without
+ * dropping targets for providers this package knows nothing about.
+ */
+export function mergeDefaultTargets(config: FastModeConfig): FastModeConfig {
+  const targets = config.targets.map(cloneTarget);
+  const seen = new Set(
+    targets.map((target) => `${target.provider}\u0000${target.model}`),
+  );
+
+  for (const target of DEFAULT_CONFIG.targets) {
+    const key = `${target.provider}\u0000${target.model}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    targets.push(cloneTarget(target));
+  }
+
+  return { enabled: config.enabled, targets };
 }
 
 function normalizeTarget(rawTarget: unknown): FastTarget | undefined {
@@ -120,7 +130,7 @@ function normalizeTarget(rawTarget: unknown): FastTarget | undefined {
   const provider = rawProvider.trim().toLowerCase();
   const model = rawModel.trim();
 
-  if (!provider || !model || !SUPPORTED_PROVIDER_SET.has(provider)) {
+  if (!provider || !model) {
     return undefined;
   }
 

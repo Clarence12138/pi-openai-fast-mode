@@ -1,12 +1,9 @@
 import {
   DEFAULT_SERVICE_TIER,
-  SUPPORTED_PROVIDERS,
   type FastModeConfig,
   type FastTarget,
   type ModelRef,
 } from "./types";
-
-const SUPPORTED_PROVIDER_SET = new Set<string>(SUPPORTED_PROVIDERS);
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -22,21 +19,19 @@ export function toModelRef(model: unknown): ModelRef | undefined {
   return { provider, id };
 }
 
-export function isSupportedProvider(provider: string): boolean {
-  return SUPPORTED_PROVIDER_SET.has(provider);
-}
-
+/**
+ * Targets are authored by the user, so the config file is the allowlist:
+ * Fast Mode touches exactly the provider/model pairs it declares.
+ */
 export function findMatchingTarget(
   model: ModelRef | undefined,
   targets: FastTarget[],
 ): FastTarget | undefined {
-  if (!model || !isSupportedProvider(model.provider)) return undefined;
+  if (!model) return undefined;
 
   return targets.find(
     (target) =>
-      target.provider === model.provider &&
-      target.model === model.id &&
-      isSupportedProvider(target.provider),
+      target.provider === model.provider && target.model === model.id,
   );
 }
 

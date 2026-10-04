@@ -22,7 +22,7 @@ const config: FastModeConfig = cloneConfig({
     { provider: "openai", model: "gpt-5.4", serviceTier: "priority" },
     { provider: "openai-codex", model: "gpt-5.5", serviceTier: "flex" },
     { provider: "openai-codex", model: "gpt-5.6-sol", serviceTier: "priority" },
-    { provider: "anthropic", model: "claude", serviceTier: "priority" },
+    { provider: "cpr", model: "gpt-6-astra", serviceTier: "priority" },
   ],
 });
 
@@ -52,13 +52,14 @@ describe("model matching", () => {
     ).toBeUndefined();
   });
 
-  it("does not match unsupported providers even when a target is present", () => {
+  it("matches a custom provider declared in targets", () => {
     expect(
-      findMatchingTarget(
-        { provider: "anthropic", id: "claude" },
-        config.targets,
-      ),
-    ).toBeUndefined();
+      findMatchingTarget({ provider: "cpr", id: "gpt-6-astra" }, config.targets),
+    ).toEqual({
+      provider: "cpr",
+      model: "gpt-6-astra",
+      serviceTier: "priority",
+    });
   });
 
   it("converts Pi model objects to lightweight model refs", () => {
@@ -152,6 +153,16 @@ describe("payload mutation", () => {
     });
   });
 
+  it("injects priority for a custom provider declared in targets", () => {
+    expect(
+      getFastModePayload(
+        config,
+        { provider: "cpr", id: "gpt-6-astra" },
+        { a: 1 },
+      ),
+    ).toEqual({ a: 1, service_tier: "priority" });
+  });
+
   it("uses target-specific serviceTier when configured", () => {
     expect(
       getFastModePayload(
@@ -207,6 +218,12 @@ describe("status behavior", () => {
         { provider: "openai", id: "gpt-5.4" },
       ),
     ).toBeUndefined();
+  });
+
+  it("returns fast for a custom provider declared in targets", () => {
+    expect(getStatusText(config, { provider: "cpr", id: "gpt-6-astra" })).toBe(
+      "fast",
+    );
   });
 
   it("hides when enabled but unmatched", () => {

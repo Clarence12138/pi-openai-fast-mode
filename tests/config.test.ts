@@ -9,12 +9,12 @@ import {
   getUserConfigPath,
   isProjectLocalExtension,
   loadConfigFromPath,
+  mergeDefaultTargets,
   normalizeConfig,
   normalizeTargets,
   parseConfigJson,
   saveConfigToPath,
   selectConfigPath,
-  syncSupportedTargets,
 } from "../src/config";
 
 const tempDirs: string[] = [];
@@ -80,21 +80,43 @@ describe("DEFAULT_CONFIG", () => {
   });
 });
 
-describe("syncSupportedTargets", () => {
-  it("uses the current package targets while preserving enabled", () => {
+describe("mergeDefaultTargets", () => {
+  it("keeps user targets and appends missing defaults", () => {
+    const merged = mergeDefaultTargets({
+      enabled: true,
+      targets: [
+        { provider: "cpr", model: "gpt-6-astra", serviceTier: "priority" },
+        { provider: "openai", model: "gpt-5.4", serviceTier: "flex" },
+      ],
+    });
+
+    expect(merged.enabled).toBe(true);
+    expect(merged.targets[0]).toEqual({
+      provider: "cpr",
+      model: "gpt-6-astra",
+      serviceTier: "priority",
+    });
+    // 用户自己声明的 serviceTier 不被默认值覆盖
     expect(
-      syncSupportedTargets({
-        enabled: true,
-        targets: [
-          { provider: "openai", model: "old-model", serviceTier: "flex" },
-        ],
-      }),
-    ).toEqual({ enabled: true, targets: DEFAULT_CONFIG.targets });
+      merged.targets.filter(
+        (target) => target.provider === "openai" && target.model === "gpt-5.4",
+      ),
+    ).toEqual([
+      { provider: "openai", model: "gpt-5.4", serviceTier: "flex" },
+    ]);
+    expect(merged.targets).toHaveLength(DEFAULT_CONFIG.targets.length + 1);
+  });
+
+  it("returns the package defaults for an empty target list", () => {
+    expect(mergeDefaultTargets({ enabled: false, targets: [] })).toEqual({
+      enabled: false,
+      targets: DEFAULT_CONFIG.targets,
+    });
   });
 });
 
 describe("normalizeTargets", () => {
-  it("ignores invalid targets, unsupported providers, and duplicate provider/model pairs", () => {
+  it("ignores malformed targets and duplicate provider/model pairs", () => {
     expect(
       normalizeTargets([
         { provider: "openai", model: "gpt-5.4" },
@@ -104,7 +126,7 @@ describe("normalizeTargets", () => {
           model: " gpt-5.5 ",
           serviceTier: " priority ",
         },
-        { provider: "anthropic", model: "claude" },
+        { provider: "cpr", model: "gpt-6-astra" },
         { provider: 1, model: "gpt-5.4" },
         { provider: "openai", model: "" },
         null,
@@ -112,6 +134,7 @@ describe("normalizeTargets", () => {
     ).toEqual([
       { provider: "openai", model: "gpt-5.4", serviceTier: "priority" },
       { provider: "openai-codex", model: "gpt-5.5", serviceTier: "priority" },
+      { provider: "cpr", model: "gpt-6-astra", serviceTier: "priority" },
     ]);
   });
 
@@ -179,7 +202,7 @@ describe("config JSON IO", () => {
     expect(await loadConfigFromPath(configPath)).toEqual(DEFAULT_CONFIG);
   });
 
-  it("saveConfigToPath writes normalized config", async () => {
+  it("saveConfigToPath writes normalized config for any provider", async () => {
     const dir = await makeTempDir();
     const configPath = join(dir, "nested", "config.json");
 
@@ -187,7 +210,7 @@ describe("config JSON IO", () => {
       enabled: true,
       targets: [
         { provider: "openai", model: "gpt-5.4" },
-        { provider: "unsupported", model: "x" },
+        { provider: "cpr", model: "gpt-6-astra" },
       ],
     });
 
@@ -195,6 +218,7 @@ describe("config JSON IO", () => {
       enabled: true,
       targets: [
         { provider: "openai", model: "gpt-5.4", serviceTier: "priority" },
+        { provider: "cpr", model: "gpt-6-astra", serviceTier: "priority" },
       ],
     });
   });

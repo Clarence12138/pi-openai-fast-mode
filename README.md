@@ -8,7 +8,8 @@ Pi package that adds a Fast Mode toggle for GPT-6-Astra, GPT-5.6, GPT-5.5, and G
 
 - Registers `/fast [on|off|toggle]`.
 - Registers `--fast` to enable Fast Mode at startup.
-- Injects `service_tier: "priority"` into matching OpenAI/OpenAI-Codex provider payloads.
+- Injects `service_tier: "priority"` into the provider/model pairs listed in `targets`.
+  Any provider name is allowed, so Fast Mode also works for custom OpenAI-compatible providers such as `cpr` or `nexapi`.
 - Shows a compact right-aligned TUI `fast` indicator only when enabled and the current model is configured.
 - Persists state in user or project scope depending on how the package is loaded.
 
@@ -97,7 +98,13 @@ Fast Mode starts disabled and only applies to exact configured provider/model pa
 }
 ```
 
-On startup, saved targets are refreshed to the current defaults, including `serviceTier: "priority"`, while preserving the enabled state.
+On startup, missing defaults are added to the saved `targets`, while the enabled state and every user-declared target (including its own `serviceTier`) are preserved.
+
+There is no provider allowlist: `targets` is the allowlist, so add any provider/model pair you use. For a custom provider that serves the same GPT models:
+
+```json
+{ "provider": "cpr", "model": "gpt-6-astra", "serviceTier": "priority" }
+```
 
 User-scoped state is stored under `~/.pi/agent/extensions/pi-openai-fast-mode/config.json`.
 Project-scoped state is stored under `./.pi/pi-openai-fast-mode/config.json`.
