@@ -9,6 +9,7 @@ import type {
 import { getFastCommandCompletions, parseFastCommand } from "./commands";
 import {
   cloneConfig,
+  loadConfigFromPath,
   loadConfigForScope,
   mergeDefaultTargets,
   saveConfigToPath,
@@ -84,6 +85,16 @@ export function createPiFastModeExtension(
         throw new Error("Fast Mode config path was not resolved");
       }
 
+      // Targets belong to the config file, and another Pi process or a hand
+      // edit may have changed them since this instance loaded. Re-read before
+      // writing so this instance's memory only owns `enabled`; otherwise a
+      // stale in-memory target list silently drops targets added elsewhere.
+      const onDisk = await loadConfigFromPath(configPath);
+      config = {
+        enabled: config.enabled,
+        targets: mergeDefaultTargets(onDisk).targets,
+      };
+
       await saveConfigToPath(configPath, config);
     }
 
@@ -145,7 +156,7 @@ export function createPiFastModeExtension(
     pi.on("session_shutdown", async (_event, ctx) => {
       try {
         if (configPath) {
-          await saveConfigToPath(configPath, config);
+          await saveCurrent(ctx);
         }
       } catch (error) {
         notifyError(ctx, error);

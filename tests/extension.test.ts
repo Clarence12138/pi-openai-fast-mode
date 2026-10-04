@@ -200,6 +200,53 @@ describe("piFastModeExtension runtime behavior", () => {
     ).toEqual({ model: "gpt-6-astra", service_tier: "priority" });
   });
 
+  it("does not drop targets that changed on disk while this instance was running", async () => {
+    const root = await makeTempDir();
+    const cwd = join(root, "project");
+    const agentDir = join(root, "agent");
+    const configPath = getUserConfigPath(agentDir);
+    await mkdir(cwd, { recursive: true });
+
+    const { pi, handlers, commands } = createFakePi(false);
+    createPiFastModeExtension({
+      extensionDir: join(root, "global", "pi-openai-fast-mode", "src"),
+      agentDir,
+    })(pi as any);
+
+    const ctx = makeCtx(cwd, { provider: "cpr", id: "gpt-6-astra" });
+    await runHandler(
+      handlers,
+      "session_start",
+      { type: "session_start", reason: "startup" },
+      ctx,
+    );
+
+    // 本实例启动后，另一个 Pi 实例（或手工编辑）往同一个文件里加了自定义 target
+    await writeFile(
+      configPath,
+      JSON.stringify({
+        enabled: true,
+        targets: [
+          ...DEFAULT_CONFIG.targets,
+          { provider: "cpr", model: "gpt-6-astra", serviceTier: "priority" },
+        ],
+      }),
+      "utf8",
+    );
+
+    // 本实例随后写盘（/fast on 与退出走同一条路径）
+    await commands.get("fast")!.handler("on", ctx);
+    await runHandler(handlers, "session_shutdown", { type: "session_shutdown" }, ctx);
+
+    const persisted = JSON.parse(await readFile(configPath, "utf8"));
+    expect(persisted.enabled).toBe(true);
+    expect(persisted.targets).toContainEqual({
+      provider: "cpr",
+      model: "gpt-6-astra",
+      serviceTier: "priority",
+    });
+  });
+
   it("--fast enables, persists, shows status, and mutates matching payloads", async () => {
     const root = await makeTempDir();
     const cwd = join(root, "project");
