@@ -5,7 +5,6 @@ import { mkdtemp } from "node:fs/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createPiFastModeExtension } from "../src/index";
 import {
-  DEFAULT_CONFIG,
   getProjectConfigPath,
   getUserConfigPath,
 } from "../src/config";
@@ -140,7 +139,7 @@ describe("piFastModeExtension registration", () => {
 });
 
 describe("piFastModeExtension runtime behavior", () => {
-  it("keeps persisted custom targets and adds missing defaults on startup without changing enabled", async () => {
+  it("drops legacy targets on startup without changing enabled", async () => {
     const root = await makeTempDir();
     const cwd = join(root, "project");
     const agentDir = join(root, "agent");
@@ -176,19 +175,7 @@ describe("piFastModeExtension runtime behavior", () => {
     );
 
     const persisted = JSON.parse(await readFile(configPath, "utf8"));
-    expect(persisted.enabled).toBe(true);
-    expect(persisted.targets[0]).toEqual({
-      provider: "cpr",
-      model: "gpt-6-astra",
-      serviceTier: "priority",
-    });
-    // 用户自己声明的 serviceTier 不被默认值覆盖
-    expect(persisted.targets).toContainEqual({
-      provider: "openai",
-      model: "gpt-5.4",
-      serviceTier: "fast",
-    });
-    expect(persisted.targets).toHaveLength(DEFAULT_CONFIG.targets.length + 1);
+    expect(persisted).toEqual({ enabled: true });
 
     expect(
       await runHandler(
@@ -200,7 +187,7 @@ describe("piFastModeExtension runtime behavior", () => {
     ).toEqual({ model: "gpt-6-astra", service_tier: "priority" });
   });
 
-  it("does not drop targets that changed on disk while this instance was running", async () => {
+  it("ignores legacy targets written by another instance and persists only the toggle", async () => {
     const root = await makeTempDir();
     const cwd = join(root, "project");
     const agentDir = join(root, "agent");
@@ -221,13 +208,12 @@ describe("piFastModeExtension runtime behavior", () => {
       ctx,
     );
 
-    // 本实例启动后，另一个 Pi 实例（或手工编辑）往同一个文件里加了自定义 target
+    // 旧实例仍可能写回 targets，但它不应重新成为新实例的匹配规则。
     await writeFile(
       configPath,
       JSON.stringify({
         enabled: true,
         targets: [
-          ...DEFAULT_CONFIG.targets,
           { provider: "cpr", model: "gpt-6-astra", serviceTier: "priority" },
         ],
       }),
@@ -239,12 +225,7 @@ describe("piFastModeExtension runtime behavior", () => {
     await runHandler(handlers, "session_shutdown", { type: "session_shutdown" }, ctx);
 
     const persisted = JSON.parse(await readFile(configPath, "utf8"));
-    expect(persisted.enabled).toBe(true);
-    expect(persisted.targets).toContainEqual({
-      provider: "cpr",
-      model: "gpt-6-astra",
-      serviceTier: "priority",
-    });
+    expect(persisted).toEqual({ enabled: true });
   });
 
   it("--fast enables, persists, shows status, and mutates matching payloads", async () => {
@@ -454,8 +435,8 @@ describe("piFastModeExtension runtime behavior", () => {
     await runHandler(
       handlers,
       "model_select",
-      { type: "model_select", model: { provider: "openai", id: "gpt-4" } },
-      { ...ctx, model: { provider: "openai", id: "gpt-4" } },
+      { type: "model_select", model: { provider: "custom", id: "claude-sonnet-4" } },
+      { ...ctx, model: { provider: "custom", id: "claude-sonnet-4" } },
     );
 
     expect(ctx.ui.setWidget).toHaveBeenCalledWith(
@@ -464,5 +445,16 @@ describe("piFastModeExtension runtime behavior", () => {
       { placement: "belowEditor" },
     );
     expectFastIndicatorHidden(ctx);
+    const payload = { messages: [], service_tier: "auto" };
+    expect(await runHandler(handlers, "before_provider_request", { payload }, {
+      ...ctx, model: { provider: "custom", id: "claude-sonnet-4" },
+    })).toBeUndefined();
+    expect(payload.service_tier).toBe("auto");
+
+    const gptCtx = { ...ctx, model: { provider: "magpie", id: "cpr/gpt-6-astra" } };
+    await runHandler(handlers, "model_select", { model: gptCtx.model }, gptCtx);
+    expectFastIndicatorShown(ctx);
+    expect(await runHandler(handlers, "before_provider_request", { payload }, gptCtx))
+      .toEqual({ ...payload, service_tier: "priority" });
   });
 });

@@ -1,5 +1,5 @@
 import { STATUS_KEY, type FastModeConfig, type ModelRef } from "./types";
-import { findMatchingTarget } from "./payload";
+import { isGptModel } from "./payload";
 
 export type StatusText = "fast" | undefined;
 
@@ -36,7 +36,7 @@ export function getStatusText(
   config: FastModeConfig,
   model: ModelRef | undefined,
 ): StatusText {
-  return config.enabled && findMatchingTarget(model, config.targets)
+  return config.enabled && isGptModel(model)
     ? "fast"
     : undefined;
 }

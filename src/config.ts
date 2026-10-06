@@ -1,191 +1,25 @@
-import { promises as fs } from "node:fs";
-import { existsSync } from "node:fs";
+import { promises as fs, existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { dirname, join, resolve, sep } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
-import {
-  DEFAULT_SERVICE_TIER,
-  type FastModeConfig,
-  type FastTarget,
-  type ResolvedConfigPath,
-} from "./types";
+import type { FastModeConfig, ResolvedConfigPath } from "./types";
 
-export const DEFAULT_CONFIG: FastModeConfig = {
-  enabled: false,
-  targets: [
-    { provider: "openai", model: "gpt-5.4", serviceTier: DEFAULT_SERVICE_TIER },
-    { provider: "openai", model: "gpt-5.5", serviceTier: DEFAULT_SERVICE_TIER },
-    { provider: "openai", model: "gpt-5.6", serviceTier: DEFAULT_SERVICE_TIER },
-    {
-      provider: "openai",
-      model: "gpt-5.6-sol",
-      serviceTier: DEFAULT_SERVICE_TIER,
-    },
-    {
-      provider: "openai",
-      model: "gpt-5.6-terra",
-      serviceTier: DEFAULT_SERVICE_TIER,
-    },
-    {
-      provider: "openai",
-      model: "gpt-5.6-luna",
-      serviceTier: DEFAULT_SERVICE_TIER,
-    },
-    {
-      provider: "openai",
-      model: "gpt-6-astra",
-      serviceTier: DEFAULT_SERVICE_TIER,
-    },
-    {
-      provider: "openai-codex",
-      model: "gpt-5.4",
-      serviceTier: DEFAULT_SERVICE_TIER,
-    },
-    {
-      provider: "openai-codex",
-      model: "gpt-5.5",
-      serviceTier: DEFAULT_SERVICE_TIER,
-    },
-    {
-      provider: "openai-codex",
-      model: "gpt-5.6",
-      serviceTier: DEFAULT_SERVICE_TIER,
-    },
-    {
-      provider: "openai-codex",
-      model: "gpt-5.6-sol",
-      serviceTier: DEFAULT_SERVICE_TIER,
-    },
-    {
-      provider: "openai-codex",
-      model: "gpt-5.6-terra",
-      serviceTier: DEFAULT_SERVICE_TIER,
-    },
-    {
-      provider: "openai-codex",
-      model: "gpt-5.6-luna",
-      serviceTier: DEFAULT_SERVICE_TIER,
-    },
-    {
-      provider: "openai-codex",
-      model: "gpt-6-astra",
-      serviceTier: DEFAULT_SERVICE_TIER,
-    },
-  ],
-};
+export const DEFAULT_CONFIG: FastModeConfig = { enabled: false };
 
-type RecordLike = Record<string, unknown>;
-
-function isRecord(value: unknown): value is RecordLike {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+export function cloneConfig(config: FastModeConfig = DEFAULT_CONFIG): FastModeConfig {
+  return { enabled: config.enabled };
 }
 
-function cloneTarget(target: FastTarget): FastTarget {
-  return {
-    provider: target.provider,
-    model: target.model,
-    serviceTier: target.serviceTier ?? DEFAULT_SERVICE_TIER,
-  };
-}
-
-export function cloneConfig(
-  config: FastModeConfig = DEFAULT_CONFIG,
-): FastModeConfig {
-  return {
-    enabled: config.enabled,
-    targets: config.targets.map(cloneTarget),
-  };
-}
-
-/**
- * Keep the persisted toggle and every user target, then add any default the
- * config does not have yet. Upgrades therefore ship new models without
- * dropping targets for providers this package knows nothing about.
- */
-export function mergeDefaultTargets(config: FastModeConfig): FastModeConfig {
-  const targets = config.targets.map(cloneTarget);
-  const seen = new Set(
-    targets.map((target) => `${target.provider}\u0000${target.model}`),
-  );
-
-  for (const target of DEFAULT_CONFIG.targets) {
-    const key = `${target.provider}\u0000${target.model}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    targets.push(cloneTarget(target));
-  }
-
-  return { enabled: config.enabled, targets };
-}
-
-function normalizeTarget(rawTarget: unknown): FastTarget | undefined {
-  if (!isRecord(rawTarget)) return undefined;
-
-  const rawProvider = rawTarget.provider;
-  const rawModel = rawTarget.model;
-
-  if (typeof rawProvider !== "string" || typeof rawModel !== "string") {
-    return undefined;
-  }
-
-  const provider = rawProvider.trim().toLowerCase();
-  const model = rawModel.trim();
-
-  if (!provider || !model) {
-    return undefined;
-  }
-
-  const rawServiceTier = rawTarget.serviceTier;
-  const serviceTier =
-    typeof rawServiceTier === "string" && rawServiceTier.trim() !== ""
-      ? rawServiceTier.trim()
-      : DEFAULT_SERVICE_TIER;
-
-  return { provider, model, serviceTier };
-}
-
-export function normalizeTargets(
-  rawTargets: unknown,
-): FastTarget[] | undefined {
-  if (!Array.isArray(rawTargets)) return undefined;
-
-  const normalized: FastTarget[] = [];
-  const seen = new Set<string>();
-
-  for (const rawTarget of rawTargets) {
-    const target = normalizeTarget(rawTarget);
-    if (!target) continue;
-
-    const key = `${target.provider}\u0000${target.model}`;
-    if (seen.has(key)) continue;
-
-    seen.add(key);
-    normalized.push(target);
-  }
-
-  return normalized;
-}
-
-/**
- * Convert arbitrary config input into a safe Fast Mode config.
- *
- * Invalid top-level values fall back entirely. Invalid or missing fields fall
- * back field-by-field, while an explicit empty targets array is preserved so a
- * user can opt out of every target in a scoped config.
- */
 export function normalizeConfig(
   raw: unknown,
   fallback: FastModeConfig = DEFAULT_CONFIG,
 ): FastModeConfig {
-  const safeFallback = cloneConfig(fallback);
-
-  if (!isRecord(raw)) return safeFallback;
-
-  const enabled =
-    typeof raw.enabled === "boolean" ? raw.enabled : safeFallback.enabled;
-  const targets = normalizeTargets(raw.targets) ?? safeFallback.targets;
-
-  return { enabled, targets };
+  // 旧配置中的 targets 不再参与判断，保留用户已有的开关状态。
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    return cloneConfig(fallback);
+  }
+  const enabled = (raw as Record<string, unknown>).enabled;
+  return { enabled: typeof enabled === "boolean" ? enabled : fallback.enabled };
 }
 
 export function parseConfigJson(
@@ -207,20 +41,12 @@ export function getProjectConfigPath(cwd: string): string {
   return join(resolve(cwd), ".pi", "pi-openai-fast-mode", "config.json");
 }
 
-export function isProjectLocalExtension(
-  extensionDir: string | undefined,
-  cwd: string,
-): boolean {
+export function isProjectLocalExtension(extensionDir: string | undefined, cwd: string): boolean {
   if (!extensionDir) return false;
-
   const projectPiDir = resolve(cwd, ".pi");
   const resolvedExtensionDir = resolve(extensionDir);
-
-  return (
-    resolvedExtensionDir === projectPiDir ||
-    resolvedExtensionDir.startsWith(
-      projectPiDir.endsWith(sep) ? projectPiDir : `${projectPiDir}${sep}`,
-    )
+  return resolvedExtensionDir === projectPiDir || resolvedExtensionDir.startsWith(
+    projectPiDir.endsWith(sep) ? projectPiDir : `${projectPiDir}${sep}`,
   );
 }
 
@@ -232,72 +58,44 @@ export type SelectConfigPathOptions = {
 };
 
 export function selectConfigPath({
-  cwd,
-  extensionDir,
-  agentDir,
-  exists = existsSync,
+  cwd, extensionDir, agentDir, exists = existsSync,
 }: SelectConfigPathOptions): ResolvedConfigPath {
   const projectPath = getProjectConfigPath(cwd);
-  if (exists(projectPath)) {
+  if (exists(projectPath) || isProjectLocalExtension(extensionDir, cwd)) {
     return { scope: "project", path: projectPath };
   }
-
-  if (isProjectLocalExtension(extensionDir, cwd)) {
-    return { scope: "project", path: projectPath };
-  }
-
   return { scope: "user", path: getUserConfigPath(agentDir) };
 }
 
 export type LoadConfigOptions = Omit<SelectConfigPathOptions, "exists"> & {
   fallback?: FastModeConfig;
 };
-
-export type LoadedConfig = ResolvedConfigPath & {
-  config: FastModeConfig;
-};
+export type LoadedConfig = ResolvedConfigPath & { config: FastModeConfig };
 
 export async function loadConfigFromPath(
   configPath: string,
   fallback: FastModeConfig = DEFAULT_CONFIG,
 ): Promise<FastModeConfig> {
   try {
-    const json = await fs.readFile(configPath, "utf8");
-    return parseConfigJson(json, fallback);
+    return parseConfigJson(await fs.readFile(configPath, "utf8"), fallback);
   } catch {
     return cloneConfig(fallback);
   }
 }
 
-export async function loadConfigForScope(
-  options: LoadConfigOptions,
-): Promise<LoadedConfig> {
+export async function loadConfigForScope(options: LoadConfigOptions): Promise<LoadedConfig> {
   const selected = selectConfigPath(options);
-  const config = await loadConfigFromPath(
-    selected.path,
-    options.fallback ?? DEFAULT_CONFIG,
-  );
+  const config = await loadConfigFromPath(selected.path, options.fallback ?? DEFAULT_CONFIG);
   return { ...selected, config };
 }
 
-export async function saveConfigToPath(
-  configPath: string,
-  config: FastModeConfig,
-): Promise<void> {
+export async function saveConfigToPath(configPath: string, config: FastModeConfig): Promise<void> {
   const normalized = normalizeConfig(config);
   await fs.mkdir(dirname(configPath), { recursive: true });
-
-  // Write a sibling file and rename it into place: fs.writeFile truncates
-  // first, so an in-place write lets a concurrent reader (or a crash) observe
-  // an empty or half-written config. Both paths stay in one directory so the
-  // rename is atomic.
+  // 同目录临时文件原子替换，避免并发读取或中断时暴露半写入配置。
   const tempPath = `${configPath}.${randomUUID()}.tmp`;
   try {
-    await fs.writeFile(
-      tempPath,
-      `${JSON.stringify(normalized, null, 2)}\n`,
-      "utf8",
-    );
+    await fs.writeFile(tempPath, `${JSON.stringify(normalized, null, 2)}\n`, "utf8");
     await fs.rename(tempPath, configPath);
   } catch (error) {
     await fs.rm(tempPath, { force: true });

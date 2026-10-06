@@ -3,326 +3,111 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  DEFAULT_CONFIG,
-  cloneConfig,
-  getProjectConfigPath,
-  getUserConfigPath,
-  isProjectLocalExtension,
-  loadConfigFromPath,
-  mergeDefaultTargets,
-  normalizeConfig,
-  normalizeTargets,
-  parseConfigJson,
-  saveConfigToPath,
-  selectConfigPath,
+  DEFAULT_CONFIG, cloneConfig, getProjectConfigPath, getUserConfigPath,
+  isProjectLocalExtension, loadConfigFromPath, normalizeConfig, parseConfigJson,
+  saveConfigToPath, selectConfigPath,
 } from "../src/config";
 
 const tempDirs: string[] = [];
-
 async function makeTempDir(): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "pi-openai-fast-mode-"));
   tempDirs.push(dir);
   return dir;
 }
-
 afterEach(async () => {
-  await Promise.all(
-    tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })),
-  );
+  await Promise.all(tempDirs.splice(0).map(dir => rm(dir, { recursive: true, force: true })));
 });
 
-describe("DEFAULT_CONFIG", () => {
-  it("starts disabled with exact OpenAI and OpenAI-Codex GPT-5.4/GPT-5.5/GPT-5.6/GPT-6-Astra targets", () => {
-    expect(DEFAULT_CONFIG).toEqual({
-      enabled: false,
-      targets: [
-        { provider: "openai", model: "gpt-5.4", serviceTier: "priority" },
-        { provider: "openai", model: "gpt-5.5", serviceTier: "priority" },
-        { provider: "openai", model: "gpt-5.6", serviceTier: "priority" },
-        { provider: "openai", model: "gpt-5.6-sol", serviceTier: "priority" },
-        { provider: "openai", model: "gpt-5.6-terra", serviceTier: "priority" },
-        { provider: "openai", model: "gpt-5.6-luna", serviceTier: "priority" },
-        { provider: "openai", model: "gpt-6-astra", serviceTier: "priority" },
-        { provider: "openai-codex", model: "gpt-5.4", serviceTier: "priority" },
-        { provider: "openai-codex", model: "gpt-5.5", serviceTier: "priority" },
-        { provider: "openai-codex", model: "gpt-5.6", serviceTier: "priority" },
-        {
-          provider: "openai-codex",
-          model: "gpt-5.6-sol",
-          serviceTier: "priority",
-        },
-        {
-          provider: "openai-codex",
-          model: "gpt-5.6-terra",
-          serviceTier: "priority",
-        },
-        {
-          provider: "openai-codex",
-          model: "gpt-5.6-luna",
-          serviceTier: "priority",
-        },
-        {
-          provider: "openai-codex",
-          model: "gpt-6-astra",
-          serviceTier: "priority",
-        },
-      ],
-    });
-  });
-
-  it("cloneConfig returns independent copies", () => {
+describe("config normalization", () => {
+  it("starts disabled and clones independently", () => {
+    expect(DEFAULT_CONFIG).toEqual({ enabled: false });
     const copy = cloneConfig();
     copy.enabled = true;
-    copy.targets[0]!.model = "changed";
-
     expect(DEFAULT_CONFIG.enabled).toBe(false);
-    expect(DEFAULT_CONFIG.targets[0]!.model).toBe("gpt-5.4");
-  });
-});
-
-describe("mergeDefaultTargets", () => {
-  it("keeps user targets and appends missing defaults", () => {
-    const merged = mergeDefaultTargets({
-      enabled: true,
-      targets: [
-        { provider: "cpr", model: "gpt-6-astra", serviceTier: "priority" },
-        { provider: "openai", model: "gpt-5.4", serviceTier: "flex" },
-      ],
-    });
-
-    expect(merged.enabled).toBe(true);
-    expect(merged.targets[0]).toEqual({
-      provider: "cpr",
-      model: "gpt-6-astra",
-      serviceTier: "priority",
-    });
-    // 用户自己声明的 serviceTier 不被默认值覆盖
-    expect(
-      merged.targets.filter(
-        (target) => target.provider === "openai" && target.model === "gpt-5.4",
-      ),
-    ).toEqual([
-      { provider: "openai", model: "gpt-5.4", serviceTier: "flex" },
-    ]);
-    expect(merged.targets).toHaveLength(DEFAULT_CONFIG.targets.length + 1);
   });
 
-  it("returns the package defaults for an empty target list", () => {
-    expect(mergeDefaultTargets({ enabled: false, targets: [] })).toEqual({
-      enabled: false,
-      targets: DEFAULT_CONFIG.targets,
-    });
-  });
-});
-
-describe("normalizeTargets", () => {
-  it("ignores malformed targets and duplicate provider/model pairs", () => {
-    expect(
-      normalizeTargets([
-        { provider: "openai", model: "gpt-5.4" },
-        { provider: "openai", model: "gpt-5.4", serviceTier: "flex" },
-        {
-          provider: "openai-codex",
-          model: " gpt-5.5 ",
-          serviceTier: " priority ",
-        },
-        { provider: "cpr", model: "gpt-6-astra" },
-        { provider: 1, model: "gpt-5.4" },
-        { provider: "openai", model: "" },
-        null,
-      ]),
-    ).toEqual([
-      { provider: "openai", model: "gpt-5.4", serviceTier: "priority" },
-      { provider: "openai-codex", model: "gpt-5.5", serviceTier: "priority" },
-      { provider: "cpr", model: "gpt-6-astra", serviceTier: "priority" },
-    ]);
+  it.each([null, "bad", [], {}, { enabled: "yes" }])("falls back for %j", raw => {
+    expect(normalizeConfig(raw)).toEqual(DEFAULT_CONFIG);
+    expect(normalizeConfig(raw, { enabled: true })).toEqual({ enabled: true });
   });
 
-  it("returns undefined for non-array target values", () => {
-    expect(normalizeTargets(undefined)).toBeUndefined();
-    expect(normalizeTargets({})).toBeUndefined();
-  });
-});
-
-describe("normalizeConfig", () => {
-  it("falls back to defaults for invalid top-level config", () => {
-    expect(normalizeConfig(null)).toEqual(DEFAULT_CONFIG);
-    expect(normalizeConfig("bad")).toEqual(DEFAULT_CONFIG);
+  it.each([true, false])("ignores legacy targets and preserves enabled=%s", enabled => {
+    for (const targets of [[], "bad", [{ provider: "custom", model: "claude", serviceTier: "flex" }]]) {
+      expect(normalizeConfig({ enabled, targets })).toEqual({ enabled });
+    }
   });
 
-  it("falls back field-by-field while preserving explicit empty targets", () => {
-    expect(normalizeConfig({ enabled: true, targets: [] })).toEqual({
-      enabled: true,
-      targets: [],
-    });
-
-    expect(normalizeConfig({ enabled: "yes", targets: "bad" })).toEqual(
-      DEFAULT_CONFIG,
-    );
-  });
-
-  it("uses a provided fallback", () => {
-    const fallback = {
-      enabled: true,
-      targets: [
-        { provider: "openai", model: "custom", serviceTier: "priority" },
-      ],
-    };
-
-    expect(normalizeConfig({}, fallback)).toEqual(fallback);
-  });
-
-  it("defaults missing serviceTier to priority", () => {
-    expect(
-      normalizeConfig({
-        enabled: true,
-        targets: [{ provider: "openai", model: "gpt-5.4" }],
-      }),
-    ).toEqual({
-      enabled: true,
-      targets: [
-        { provider: "openai", model: "gpt-5.4", serviceTier: "priority" },
-      ],
-    });
+  it("falls back on invalid JSON", () => {
+    expect(parseConfigJson("not-json")).toEqual(DEFAULT_CONFIG);
   });
 });
 
 describe("config JSON IO", () => {
-  it("does not throw on invalid JSON and falls back to defaults", () => {
-    expect(parseConfigJson("not-json")).toEqual(DEFAULT_CONFIG);
+  it("falls back for missing or malformed files", async () => {
+    const path = join(await makeTempDir(), "config.json");
+    expect(await loadConfigFromPath(path)).toEqual(DEFAULT_CONFIG);
+    await writeFile(path, "{");
+    expect(await loadConfigFromPath(path)).toEqual(DEFAULT_CONFIG);
   });
 
-  it("loadConfigFromPath falls back when a file is missing or invalid", async () => {
-    const dir = await makeTempDir();
-    const configPath = join(dir, "config.json");
-
-    expect(await loadConfigFromPath(configPath)).toEqual(DEFAULT_CONFIG);
-
-    await writeFile(configPath, "{", "utf8");
-    expect(await loadConfigFromPath(configPath)).toEqual(DEFAULT_CONFIG);
+  it("loads legacy config and persists only the toggle", async () => {
+    const path = join(await makeTempDir(), "config.json");
+    await writeFile(path, JSON.stringify({ enabled: true, targets: [] }));
+    const config = await loadConfigFromPath(path);
+    expect(config).toEqual({ enabled: true });
+    await saveConfigToPath(path, config);
+    expect(JSON.parse(await readFile(path, "utf8"))).toEqual({ enabled: true });
   });
 
-  it("saveConfigToPath writes normalized config for any provider", async () => {
-    const dir = await makeTempDir();
-    const configPath = join(dir, "nested", "config.json");
-
-    await saveConfigToPath(configPath, {
-      enabled: true,
-      targets: [
-        { provider: "openai", model: "gpt-5.4" },
-        { provider: "cpr", model: "gpt-6-astra" },
-      ],
-    });
-
-    expect(JSON.parse(await readFile(configPath, "utf8"))).toEqual({
-      enabled: true,
-      targets: [
-        { provider: "openai", model: "gpt-5.4", serviceTier: "priority" },
-        { provider: "cpr", model: "gpt-6-astra", serviceTier: "priority" },
-      ],
-    });
-  });
-
-  it("replaces the config in place without leaving temp files behind", async () => {
-    const dir = await makeTempDir();
-    const configPath = join(dir, "nested", "config.json");
-
-    await saveConfigToPath(configPath, { enabled: false, targets: [] });
-    await saveConfigToPath(configPath, { enabled: true, targets: [] });
-
-    expect(await readdir(join(dir, "nested"))).toEqual(["config.json"]);
-    expect(JSON.parse(await readFile(configPath, "utf8"))).toEqual({
-      enabled: true,
-      targets: [],
-    });
+  it("creates directories and replaces config without leftover temp files", async () => {
+    const dir = join(await makeTempDir(), "nested");
+    const path = join(dir, "config.json");
+    await saveConfigToPath(path, { enabled: false });
+    await saveConfigToPath(path, { enabled: true });
+    expect(await readdir(dir)).toEqual(["config.json"]);
+    expect(JSON.parse(await readFile(path, "utf8"))).toEqual({ enabled: true });
   });
 
   it("never exposes a partial file to concurrent readers", async () => {
-    const dir = await makeTempDir();
-    const configPath = join(dir, "config.json");
-    const expected = { enabled: true, targets: DEFAULT_CONFIG.targets };
-
-    await saveConfigToPath(configPath, expected);
-
-    let malformed = 0;
-    let mismatched = 0;
+    const path = join(await makeTempDir(), "config.json");
+    const expected = { enabled: true };
+    await saveConfigToPath(path, expected);
     const reader = async () => {
       for (let i = 0; i < 30; i++) {
-        try {
-          const parsed = JSON.parse(await readFile(configPath, "utf8"));
-          if (JSON.stringify(parsed) !== JSON.stringify(expected)) mismatched++;
-        } catch {
-          malformed++;
-        }
+        expect(JSON.parse(await readFile(path, "utf8"))).toEqual(expected);
       }
     };
     const writer = async () => {
-      for (let i = 0; i < 10; i++) await saveConfigToPath(configPath, expected);
+      for (let i = 0; i < 10; i++) await saveConfigToPath(path, expected);
     };
-
-    await Promise.all([
-      ...Array.from({ length: 20 }, reader),
-      ...Array.from({ length: 20 }, writer),
-    ]);
-
-    expect({ malformed, mismatched }).toEqual({ malformed: 0, mismatched: 0 });
+    await Promise.all([...Array.from({ length: 20 }, reader), ...Array.from({ length: 20 }, writer)]);
   });
 });
 
 describe("persistence scope selection", () => {
-  it("uses user-level state for a user/global extension when no project config exists", () => {
-    const cwd = "/repo";
-    const agentDir = "/home/user/.pi/agent";
-
-    expect(
-      selectConfigPath({
-        cwd,
-        agentDir,
-        extensionDir: "/home/user/.pi/agent/npm/pi-openai-fast-mode/src",
-        exists: () => false,
-      }),
-    ).toEqual({ scope: "user", path: getUserConfigPath(agentDir) });
+  it("uses user state for a global extension without project config", () => {
+    expect(selectConfigPath({
+      cwd: "/repo", agentDir: "/agent", extensionDir: "/agent/npm/fast/src", exists: () => false,
+    })).toEqual({ scope: "user", path: getUserConfigPath("/agent") });
   });
 
-  it("uses an existing project config even for a global extension", () => {
-    const cwd = "/repo";
-    const projectPath = getProjectConfigPath(cwd);
-
-    expect(
-      selectConfigPath({
-        cwd,
-        agentDir: "/home/user/.pi/agent",
-        extensionDir: "/home/user/.pi/agent/npm/pi-openai-fast-mode/src",
-        exists: (path) => path === projectPath,
-      }),
-    ).toEqual({ scope: "project", path: projectPath });
+  it("uses existing project config even with a global extension", () => {
+    expect(selectConfigPath({
+      cwd: "/repo", agentDir: "/agent", extensionDir: "/agent/npm/fast/src",
+      exists: path => path === getProjectConfigPath("/repo"),
+    })).toEqual({ scope: "project", path: getProjectConfigPath("/repo") });
   });
 
-  it("uses project-level state for project-local packages under cwd/.pi", () => {
-    const cwd = "/repo";
-    const projectPath = getProjectConfigPath(cwd);
-
-    expect(
-      selectConfigPath({
-        cwd,
-        agentDir: "/home/user/.pi/agent",
-        extensionDir: "/repo/.pi/npm/pi-openai-fast-mode/src",
-        exists: () => false,
-      }),
-    ).toEqual({ scope: "project", path: projectPath });
+  it("uses project state for project-local installs", () => {
+    expect(selectConfigPath({
+      cwd: "/repo", extensionDir: "/repo/.pi/npm/fast/src", exists: () => false,
+    })).toEqual({ scope: "project", path: getProjectConfigPath("/repo") });
   });
 
-  it("detects project-local extension directories deterministically", () => {
-    expect(
-      isProjectLocalExtension(
-        "/repo/.pi/extensions/pi-openai-fast-mode",
-        "/repo",
-      ),
-    ).toBe(true);
+  it("detects project-local directories without matching sibling prefixes", () => {
+    expect(isProjectLocalExtension("/repo/.pi/extensions/fast", "/repo")).toBe(true);
     expect(isProjectLocalExtension("/repo/.pi", "/repo")).toBe(true);
-    expect(
-      isProjectLocalExtension("/repo/.pi-other/pi-openai-fast-mode", "/repo"),
-    ).toBe(false);
+    expect(isProjectLocalExtension("/repo/.pi-other/fast", "/repo")).toBe(false);
     expect(isProjectLocalExtension(undefined, "/repo")).toBe(false);
   });
 });

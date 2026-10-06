@@ -1,319 +1,116 @@
 import { describe, expect, it, vi } from "vitest";
-import { cloneConfig } from "../src/config";
+import { isGptModel, applyFastModePayload, getFastModePayload, toModelRef } from "../src/payload";
 import {
-  findMatchingTarget,
-  applyFastModePayload,
-  getFastModePayload,
-  toModelRef,
-} from "../src/payload";
-import {
-  canSetTuiStatus,
-  clearFastStatus,
-  createFastIndicatorFactory,
-  getRightAlignedStatusLine,
-  getStatusText,
-  updateFastStatus,
+  canSetTuiStatus, clearFastStatus, createFastIndicatorFactory,
+  getRightAlignedStatusLine, getStatusText, updateFastStatus,
 } from "../src/status";
-import { STATUS_KEY, type FastModeConfig } from "../src/types";
+import { STATUS_KEY } from "../src/types";
 
-const config: FastModeConfig = cloneConfig({
-  enabled: true,
-  targets: [
-    { provider: "openai", model: "gpt-5.4", serviceTier: "priority" },
-    { provider: "openai-codex", model: "gpt-5.5", serviceTier: "flex" },
-    { provider: "openai-codex", model: "gpt-5.6-sol", serviceTier: "priority" },
-    { provider: "cpr", model: "gpt-6-astra", serviceTier: "priority" },
-  ],
-});
+const config = { enabled: true };
 
-describe("model matching", () => {
-  it("matches exact provider/model pairs", () => {
-    expect(
-      findMatchingTarget({ provider: "openai", id: "gpt-5.4" }, config.targets),
-    ).toEqual({
-      provider: "openai",
-      model: "gpt-5.4",
-      serviceTier: "priority",
-    });
-  });
+const gptIds = [
+  "gpt-4", "gpt-4o", "gpt-5.4", "gpt-6-astra", "gpt-6-astra-preview",
+  "cpr/gpt-6-astra", "router/cpr/gpt-5.6-sol", "GPT-6-ASTRA",
+  "gpt-5.4:priority", "gpt-5.4_custom",
+];
+const otherIds = [
+  "claude-sonnet-4", "gemini-3.6-flash", "deepseek-flash", "grok-4.7", "o3",
+  "custom/claude", "not-gpt-5.4", "mygpt-4", "gpt", "gpt-", "",
+  "gpt-5.4/claude", "cpr/gpt-6-astra/", "gpt-5.4 claude",
+];
 
-  it("does not match provider mismatch", () => {
-    expect(
-      findMatchingTarget(
-        { provider: "openai-codex", id: "gpt-5.4" },
-        config.targets,
-      ),
-    ).toBeUndefined();
-  });
-
-  it("does not match model mismatch", () => {
-    expect(
-      findMatchingTarget({ provider: "openai", id: "gpt-4" }, config.targets),
-    ).toBeUndefined();
-  });
-
-  it("matches a custom provider declared in targets", () => {
-    expect(
-      findMatchingTarget({ provider: "cpr", id: "gpt-6-astra" }, config.targets),
-    ).toEqual({
-      provider: "cpr",
-      model: "gpt-6-astra",
-      serviceTier: "priority",
-    });
-  });
-
-  it("converts Pi model objects to lightweight model refs", () => {
-    expect(
-      toModelRef({ provider: "openai", id: "gpt-5.4", name: "GPT" }),
-    ).toEqual({
-      provider: "openai",
-      id: "gpt-5.4",
-    });
-    expect(toModelRef({ provider: "openai" })).toBeUndefined();
-    expect(toModelRef(null)).toBeUndefined();
-  });
-});
-
-describe.each(["openai", "openai-codex"])("GPT-6-Astra on %s", (provider) => {
-  const model = { provider, id: "gpt-6-astra" };
-  const defaults = cloneConfig();
-  const enabledConfig = { ...defaults, enabled: true };
-
-  it("matches the default target, injects priority, and shows fast when enabled", () => {
-    expect(findMatchingTarget(model, defaults.targets)).toEqual({
-      provider,
-      model: "gpt-6-astra",
-      serviceTier: "priority",
-    });
-    const payload = { model: model.id, messages: [], service_tier: "auto" };
-    expect(getFastModePayload(enabledConfig, model, payload)).toEqual({
-      ...payload,
-      service_tier: "priority",
-    });
+describe.each(["openai", "openai-codex", "cpr", "magpie", "new-provider"])("model recognition on %s", provider => {
+  it.each(gptIds)("enables priority and status for %s without targets", id => {
+    const model = { provider, id };
+    const payload = { model: id, messages: [], service_tier: "auto" };
+    expect(isGptModel(model)).toBe(true);
+    expect(getFastModePayload(config, model, payload)).toEqual({ ...payload, service_tier: "priority" });
     expect(payload.service_tier).toBe("auto");
-    expect(getStatusText(enabledConfig, model)).toBe("fast");
+    expect(getStatusText(config, model)).toBe("fast");
+    expect(getFastModePayload({ enabled: false }, model, payload)).toBeUndefined();
+    expect(getStatusText({ enabled: false }, model)).toBeUndefined();
   });
 
-  it("does not change payloads or show fast when disabled", () => {
-    expect(getFastModePayload(defaults, model, {})).toBeUndefined();
-    expect(getStatusText(defaults, model)).toBeUndefined();
-  });
-
-  it("does not match unconfigured model variants", () => {
-    const variant = { provider, id: "gpt-6-astra-preview" };
-    expect(findMatchingTarget(variant, defaults.targets)).toBeUndefined();
-    expect(getFastModePayload(enabledConfig, variant, {})).toBeUndefined();
-    expect(getStatusText(enabledConfig, variant)).toBeUndefined();
-  });
-});
-
-describe("payload mutation", () => {
-  it("defaults missing or empty service tiers to priority", () => {
-    expect(applyFastModePayload({ a: 1 }, "")).toEqual({
-      a: 1,
-      service_tier: "priority",
-    });
-    expect(
-      getFastModePayload(
-        { enabled: true, targets: [{ provider: "openai", model: "gpt-6-astra" }] },
-        { provider: "openai", id: "gpt-6-astra" },
-        { a: 1 },
-      ),
-    ).toEqual({ a: 1, service_tier: "priority" });
-  });
-
-  it("applyFastModePayload injects service_tier while preserving existing fields", () => {
-    const payload = { model: "gpt-5.4", messages: [], service_tier: "auto" };
-    const mutated = applyFastModePayload(payload, "priority");
-
-    expect(mutated).toEqual({
-      model: "gpt-5.4",
-      messages: [],
-      service_tier: "priority",
-    });
-    expect(mutated).not.toBe(payload);
-  });
-
-  it("applyFastModePayload returns undefined for non-record payloads", () => {
-    expect(applyFastModePayload(null, "priority")).toBeUndefined();
-    expect(applyFastModePayload([], "priority")).toBeUndefined();
-    expect(applyFastModePayload("payload", "priority")).toBeUndefined();
-  });
-
-  it("injects priority only when enabled and matched", () => {
-    expect(
-      getFastModePayload(
-        config,
-        { provider: "openai", id: "gpt-5.4" },
-        { a: 1 },
-      ),
-    ).toEqual({
-      a: 1,
-      service_tier: "priority",
-    });
-  });
-
-  it("injects priority for a custom provider declared in targets", () => {
-    expect(
-      getFastModePayload(
-        config,
-        { provider: "cpr", id: "gpt-6-astra" },
-        { a: 1 },
-      ),
-    ).toEqual({ a: 1, service_tier: "priority" });
-  });
-
-  it("uses target-specific serviceTier when configured", () => {
-    expect(
-      getFastModePayload(
-        config,
-        { provider: "openai-codex", id: "gpt-5.5" },
-        { a: 1 },
-      ),
-    ).toEqual({ a: 1, service_tier: "flex" });
-  });
-
-  it("matches configured GPT-5.6 models", () => {
-    expect(
-      getFastModePayload(
-        config,
-        { provider: "openai-codex", id: "gpt-5.6-sol" },
-        { a: 1 },
-      ),
-    ).toEqual({ a: 1, service_tier: "priority" });
-  });
-
-  it("does nothing when disabled", () => {
-    expect(
-      getFastModePayload(
-        { ...config, enabled: false },
-        { provider: "openai", id: "gpt-5.4" },
-        { a: 1 },
-      ),
-    ).toBeUndefined();
-  });
-
-  it("does nothing when unmatched", () => {
-    expect(
-      getFastModePayload(
-        config,
-        { provider: "openai", id: "gpt-5.5" },
-        { a: 1 },
-      ),
-    ).toBeUndefined();
+  it.each(otherIds)("leaves %s untouched and hides status", id => {
+    const model = { provider, id };
+    const payload = { model: id, service_tier: "flex" };
+    expect(isGptModel(model)).toBe(false);
+    expect(getFastModePayload(config, model, payload)).toBeUndefined();
+    expect(payload.service_tier).toBe("flex");
+    expect(getStatusText(config, model)).toBeUndefined();
   });
 });
 
-describe("status behavior", () => {
-  it("returns fast when enabled and matched", () => {
-    expect(getStatusText(config, { provider: "openai", id: "gpt-5.4" })).toBe(
-      "fast",
-    );
+describe("payload boundaries", () => {
+  it("does nothing without a model", () => {
+    expect(isGptModel(undefined)).toBe(false);
+    expect(getFastModePayload(config, undefined, {})).toBeUndefined();
+    expect(getStatusText(config, undefined)).toBeUndefined();
   });
 
-  it("hides when disabled", () => {
-    expect(
-      getStatusText(
-        { ...config, enabled: false },
-        { provider: "openai", id: "gpt-5.4" },
-      ),
-    ).toBeUndefined();
+  it("converts Pi model refs and rejects malformed refs", () => {
+    expect(toModelRef({ provider: "magpie", id: "cpr/gpt-6-astra", name: "GPT" }))
+      .toEqual({ provider: "magpie", id: "cpr/gpt-6-astra" });
+    for (const value of [null, [], { provider: "openai" }, { provider: "", id: "gpt-4" }]) {
+      expect(toModelRef(value)).toBeUndefined();
+    }
   });
 
-  it("returns fast for a custom provider declared in targets", () => {
-    expect(getStatusText(config, { provider: "cpr", id: "gpt-6-astra" })).toBe(
-      "fast",
-    );
+  it("injects without mutating the original payload", () => {
+    const payload = { model: "gpt-4", messages: [], service_tier: "auto" };
+    const result = applyFastModePayload(payload, "priority");
+    expect(result).toEqual({ ...payload, service_tier: "priority" });
+    expect(result).not.toBe(payload);
+    expect(payload.service_tier).toBe("auto");
+    expect(applyFastModePayload({}, "")).toEqual({ service_tier: "priority" });
   });
 
-  it("hides when enabled but unmatched", () => {
-    expect(
-      getStatusText(config, { provider: "openai", id: "gpt-5.5" }),
-    ).toBeUndefined();
+  it.each([null, [], "payload"])("ignores non-record payload %j", payload => {
+    expect(getFastModePayload(config, { provider: "magpie", id: "cpr/gpt-4" }, payload)).toBeUndefined();
   });
+});
 
-  it("right-aligns the widget line to the render width", () => {
+describe("status rendering", () => {
+  it("right aligns and handles narrow widths", () => {
     expect(getRightAlignedStatusLine("fast", 10)).toBe("      fast");
     expect(getRightAlignedStatusLine("fast", 4)).toBe("fast");
     expect(getRightAlignedStatusLine("fast", 2)).toBe("fa");
     expect(getRightAlignedStatusLine("fast", 0)).toBe("");
-
-    const component = createFastIndicatorFactory("fast")();
-    expect(component.render(8)).toEqual(["    fast"]);
+    expect(createFastIndicatorFactory("fast")().render(8)).toEqual(["    fast"]);
   });
 
-  it("uses a right-aligned below-editor widget when available", () => {
+  it("uses a below-editor widget and clears it", () => {
     const setStatus = vi.fn();
     const setWidget = vi.fn();
     const ctx = { hasUI: true, mode: "tui", ui: { setStatus, setWidget } };
-
-    updateFastStatus(ctx, config, { provider: "openai", id: "gpt-5.4" });
+    updateFastStatus(ctx, config, { provider: "magpie", id: "cpr/gpt-6-astra" });
+    expect(setWidget).toHaveBeenLastCalledWith(STATUS_KEY, expect.any(Function), { placement: "belowEditor" });
+    expect(setWidget.mock.calls[0]![1]().render(8)).toEqual(["    fast"]);
     clearFastStatus(ctx);
-
-    expect(setStatus).toHaveBeenNthCalledWith(1, STATUS_KEY, undefined);
-    expect(setWidget).toHaveBeenNthCalledWith(
-      1,
-      STATUS_KEY,
-      expect.any(Function),
-      { placement: "belowEditor" },
-    );
-    const factory = setWidget.mock.calls[0]?.[1];
-    expect((factory as Function)().render(10)).toEqual(["      fast"]);
-    expect(setStatus).toHaveBeenNthCalledWith(2, STATUS_KEY, undefined);
-    expect(setWidget).toHaveBeenNthCalledWith(2, STATUS_KEY, undefined, {
-      placement: "belowEditor",
-    });
+    expect(setWidget).toHaveBeenLastCalledWith(STATUS_KEY, undefined, { placement: "belowEditor" });
+    expect(setStatus).toHaveBeenLastCalledWith(STATUS_KEY, undefined);
   });
 
-  it("falls back to the TUI footer status when widgets are unavailable", () => {
+  it("falls back to footer status and hides for non-GPT models", () => {
     const setStatus = vi.fn();
     const ctx = { hasUI: true, mode: "tui", ui: { setStatus } };
-
-    updateFastStatus(ctx, config, { provider: "openai", id: "gpt-5.4" });
+    updateFastStatus(ctx, config, { provider: "custom", id: "gpt-4" });
+    expect(setStatus).toHaveBeenLastCalledWith(STATUS_KEY, "fast");
+    updateFastStatus(ctx, config, { provider: "custom", id: "claude" });
+    expect(setStatus).toHaveBeenLastCalledWith(STATUS_KEY, undefined);
     clearFastStatus(ctx);
-
-    expect(setStatus).toHaveBeenNthCalledWith(1, STATUS_KEY, "fast");
-    expect(setStatus).toHaveBeenNthCalledWith(2, STATUS_KEY, undefined);
+    expect(setStatus).toHaveBeenLastCalledWith(STATUS_KEY, undefined);
   });
 
-  it("sets undefined to hide when disabled or unmatched", () => {
+  it("does not render outside TUI", () => {
     const setStatus = vi.fn();
-    const ctx = { hasUI: true, mode: "tui", ui: { setStatus } };
-
-    updateFastStatus(
-      ctx,
-      { ...config, enabled: false },
-      { provider: "openai", id: "gpt-5.4" },
-    );
-    updateFastStatus(ctx, config, { provider: "openai", id: "gpt-5.5" });
-
-    expect(setStatus).toHaveBeenNthCalledWith(1, STATUS_KEY, undefined);
-    expect(setStatus).toHaveBeenNthCalledWith(2, STATUS_KEY, undefined);
-  });
-
-  it("does not update non-TUI/no-UI contexts", () => {
-    const setStatus = vi.fn();
-
-    expect(
-      canSetTuiStatus({ hasUI: false, mode: "tui", ui: { setStatus } }),
-    ).toBe(false);
-    expect(
-      canSetTuiStatus({ hasUI: true, mode: "print", ui: { setStatus } }),
-    ).toBe(false);
-
-    updateFastStatus({ hasUI: false, mode: "tui", ui: { setStatus } }, config, {
-      provider: "openai",
-      id: "gpt-5.4",
-    });
-    updateFastStatus(
+    for (const ctx of [
+      { hasUI: false, mode: "tui", ui: { setStatus } },
       { hasUI: true, mode: "print", ui: { setStatus } },
-      config,
-      {
-        provider: "openai",
-        id: "gpt-5.4",
-      },
-    );
-
+    ]) {
+      expect(canSetTuiStatus(ctx)).toBe(false);
+      updateFastStatus(ctx, config, { provider: "openai", id: "gpt-4" });
+    }
     expect(setStatus).not.toHaveBeenCalled();
   });
 });

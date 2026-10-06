@@ -1,19 +1,17 @@
 # pi-openai-fast-mode
 
-Pi package that adds a Fast Mode toggle for GPT-6-Astra, GPT-5.6, GPT-5.5, and GPT-5.4.
+Pi package that adds a Fast Mode toggle for GPT models on any provider.
 
 <img style="width: 100%; height: auto;" alt="fast mode" src="https://raw.githubusercontent.com/johncmunson/pi-openai-fast-mode/refs/heads/main/preview-img.png" />
 
 ## Features
 
-- Registers `/fast [on|off|toggle]`.
-- Registers `--fast` to enable Fast Mode at startup.
-- Injects `service_tier: "priority"` into the provider/model pairs listed in `targets`.
-  Any provider name is allowed, so Fast Mode also works for custom OpenAI-compatible providers such as `cpr` or `nexapi`.
-- Shows a compact right-aligned TUI `fast` indicator only when enabled and the current model is configured.
-- Persists state in user or project scope depending on how the package is loaded.
-
-> View on the [Pi Package Registry](https://pi.dev/packages/pi-openai-fast-mode)
+- Registers `/fast [on|off|toggle]` and the startup flag `--fast`
+- Automatically recognizes GPT model IDs, including routing prefixes such as `cpr/gpt-6-astra`
+- Injects `service_tier: "priority"` only when Fast Mode is enabled and the current model is recognized as GPT
+- Leaves other models and disabled-mode requests untouched
+- Shows a compact right-aligned TUI `fast` indicator using the same recognition rule
+- Persists the toggle in user or project scope
 
 ## Install
 
@@ -44,70 +42,32 @@ Start Pi with Fast Mode enabled and persisted:
 pi --fast
 ```
 
-## Default configuration
+## Model recognition
 
-Fast Mode starts disabled and only applies to exact configured provider/model pairs:
+No provider allowlist or target list is required. The last slash-separated segment of the model ID must match `gpt-` followed by an alphanumeric character and optional alphanumeric characters, dots, underscores, colons, or hyphens, case-insensitively.
+
+Examples:
+
+- `gpt-5.4`, `gpt-6-astra`, `gpt-6-astra-preview`: recognized
+- `cpr/gpt-6-astra`, `router/cpr/gpt-5.6-sol`: recognized on any provider
+- `claude-sonnet-4`, `gemini-3.6-flash`, `deepseek-flash`, `grok-4.7`, `o3`: untouched
+- `not-gpt-5.4`, `gpt-5.4/claude`: untouched
+
+Recognition uses the model ID, not its display name. Aliases without a GPT model ID are not recognized. A GPT name does not guarantee that an upstream service accepts or honors priority; the `fast` indicator reports client-side intent only.
+
+## Configuration
+
+Fast Mode starts disabled. Only the toggle is persisted:
 
 ```json
 {
-  "enabled": false,
-  "targets": [
-    { "provider": "openai", "model": "gpt-5.4", "serviceTier": "priority" },
-    { "provider": "openai", "model": "gpt-5.5", "serviceTier": "priority" },
-    { "provider": "openai", "model": "gpt-5.6", "serviceTier": "priority" },
-    { "provider": "openai", "model": "gpt-5.6-sol", "serviceTier": "priority" },
-    { "provider": "openai", "model": "gpt-5.6-terra", "serviceTier": "priority" },
-    { "provider": "openai", "model": "gpt-5.6-luna", "serviceTier": "priority" },
-    { "provider": "openai", "model": "gpt-6-astra", "serviceTier": "priority" },
-    {
-      "provider": "openai-codex",
-      "model": "gpt-5.4",
-      "serviceTier": "priority"
-    },
-    {
-      "provider": "openai-codex",
-      "model": "gpt-5.5",
-      "serviceTier": "priority"
-    },
-    {
-      "provider": "openai-codex",
-      "model": "gpt-5.6",
-      "serviceTier": "priority"
-    },
-    {
-      "provider": "openai-codex",
-      "model": "gpt-5.6-sol",
-      "serviceTier": "priority"
-    },
-    {
-      "provider": "openai-codex",
-      "model": "gpt-5.6-terra",
-      "serviceTier": "priority"
-    },
-    {
-      "provider": "openai-codex",
-      "model": "gpt-5.6-luna",
-      "serviceTier": "priority"
-    },
-    {
-      "provider": "openai-codex",
-      "model": "gpt-6-astra",
-      "serviceTier": "priority"
-    }
-  ]
+  "enabled": false
 }
 ```
 
-On startup, missing defaults are added to the saved `targets`, while the enabled state and every user-declared target (including its own `serviceTier`) are preserved.
+Legacy `targets` entries are ignored and removed when the configuration is saved; their `serviceTier` values do not override priority. The existing enabled state is preserved.
 
-There is no provider allowlist: `targets` is the allowlist, so add any provider/model pair you use. For a custom provider that serves the same GPT models:
-
-```json
-{ "provider": "cpr", "model": "gpt-6-astra", "serviceTier": "priority" }
-```
-
-User-scoped state is stored under `~/.pi/agent/extensions/pi-openai-fast-mode/config.json`.
-Project-scoped state is stored under `./.pi/pi-openai-fast-mode/config.json`.
+User-scoped state lives at `~/.pi/agent/extensions/pi-openai-fast-mode/config.json`. An existing project config at `./.pi/pi-openai-fast-mode/config.json` takes precedence; project-local installs also use that path.
 
 ## Development
 

@@ -1,7 +1,6 @@
 import {
   DEFAULT_SERVICE_TIER,
   type FastModeConfig,
-  type FastTarget,
   type ModelRef,
 } from "./types";
 
@@ -19,20 +18,10 @@ export function toModelRef(model: unknown): ModelRef | undefined {
   return { provider, id };
 }
 
-/**
- * Targets are authored by the user, so the config file is the allowlist:
- * Fast Mode touches exactly the provider/model pairs it declares.
- */
-export function findMatchingTarget(
-  model: ModelRef | undefined,
-  targets: FastTarget[],
-): FastTarget | undefined {
-  if (!model) return undefined;
-
-  return targets.find(
-    (target) =>
-      target.provider === model.provider && target.model === model.id,
-  );
+export function isGptModel(model: ModelRef | undefined): boolean {
+  // 只检查最后一个路径段，支持路由前缀，但不把路径中含 gpt 的其他模型误判为 GPT。
+  const name = model?.id.split("/").at(-1);
+  return name !== undefined && /^gpt-[a-z0-9][a-z0-9._:-]*$/i.test(name);
 }
 
 export function applyFastModePayload(
@@ -52,13 +41,7 @@ export function getFastModePayload(
   model: ModelRef | undefined,
   payload: unknown,
 ): unknown | undefined {
-  if (!config.enabled) return undefined;
+  if (!config.enabled || !isGptModel(model)) return undefined;
 
-  const target = findMatchingTarget(model, config.targets);
-  if (!target) return undefined;
-
-  return applyFastModePayload(
-    payload,
-    target.serviceTier ?? DEFAULT_SERVICE_TIER,
-  );
+  return applyFastModePayload(payload, DEFAULT_SERVICE_TIER);
 }

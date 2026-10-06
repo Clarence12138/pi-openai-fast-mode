@@ -9,9 +9,7 @@ import type {
 import { getFastCommandCompletions, parseFastCommand } from "./commands";
 import {
   cloneConfig,
-  loadConfigFromPath,
   loadConfigForScope,
-  mergeDefaultTargets,
   saveConfigToPath,
 } from "./config";
 import { getFastModePayload, toModelRef } from "./payload";
@@ -57,12 +55,11 @@ export function createPiFastModeExtension(
         agentDir,
       });
 
-      config = mergeDefaultTargets(loaded.config);
+      config = loaded.config;
       configPath = loaded.path;
       loadedCwd = ctx.cwd;
 
-      // Persist on every load so upgrades ship new default targets without
-      // touching the enabled toggle or dropping user-declared targets.
+      // 保存规范化配置，移除不再使用的目标列表，同时保留开关。
       await saveConfigToPath(configPath, config);
     }
 
@@ -84,16 +81,6 @@ export function createPiFastModeExtension(
       if (!configPath) {
         throw new Error("Fast Mode config path was not resolved");
       }
-
-      // Targets belong to the config file, and another Pi process or a hand
-      // edit may have changed them since this instance loaded. Re-read before
-      // writing so this instance's memory only owns `enabled`; otherwise a
-      // stale in-memory target list silently drops targets added elsewhere.
-      const onDisk = await loadConfigFromPath(configPath);
-      config = {
-        enabled: config.enabled,
-        targets: mergeDefaultTargets(onDisk).targets,
-      };
 
       await saveConfigToPath(configPath, config);
     }
